@@ -34,6 +34,7 @@ class HelpDesk:
         """ Create client connection to slack. """
         self.client = slackclient.SlackClient(self.config.get('DEFAULT', 'token'))
         self.client.rtm_connect()
+        self.logger.info('HelpDesk connected to slack')
 
     def is_direct_msg(self, msg):
         """ Return if the event occurred within a direct message with the bot.
@@ -57,15 +58,19 @@ class HelpDesk:
             if cmd.startswith('__'):  # skip __init__.py
                 continue
             try:
+                if cmd.strip('.py') in self.commands:  # we already know about this module, reload instead of import
+                    importlib.reload(self.commands[cmd.strip('.py')])
+                    self.logger.info('reloaded module {}'.format(cmd.strip('.py')))
+                    continue
                 module = importlib.import_module('commands.{}'.format(cmd.strip('.py')))
             except ImportError as e:
                 self.logger.error('failed to import {}'.format(cmd))
             else:
-                self.logger.info('imported {}'.format(cmd))
+                self.logger.info('imported module {}'.format(cmd))
                 self.commands[cmd.strip('.py')] = module
 
     def load_known_rooms(self):
-        """ Stuff goes here. """
+        """ Caches all public and private rooms that HelpDesk knows about. """
         for pub_channel in self.client.api_call('channels.list', exclude_archived=1).get('channels', []):  # public
             if self.debug:
                 self.logger.debug(pub_channel)
@@ -123,10 +128,10 @@ class HelpDesk:
                             for name, obj in inspect.getmembers(self.commands.get(args[0].lower(), [])):
                                 if not name.startswith('__') and inspect.isclass(obj):
                                     if hasattr(obj, 'run'):
-                                        kwargs = dict(locals(), **self.__dict__)
-                                        del(kwargs['self'])
-                                        inst_obj = obj(**kwargs)
-                                        thread = threading.Thread(target=inst_obj.run, name=name)
+                                        kwargs = dict(locals(), **self.__dict__)  # build a new dict from both sets
+                                        del(kwargs['self'])  # remove self to avoid problems
+                                        inst_obj = obj(**kwargs)  # instantiate
+                                        thread = threading.Thread(target=inst_obj.run, name=name)  # call .run
                                         self.threads.append(thread)
                                         thread.start()
 
@@ -147,17 +152,19 @@ if __name__ == '__main__':
                         format='%(asctime)s | %(name)s | %(module)s -%(lineno)4s | %(levelname) -8s | %(message)s')
 
     hd = HelpDesk(config)
-
     # sending a SIGHUP to the main bot process causes it to reload commands from disk
     signal.signal(signal.SIGHUP, hd.load_commands)
 
+    hd.logger.info("HelpDesk starting up.")
     try:
         hd.loop()
     except KeyboardInterrupt:
         print('Cleaning up and shutting down')
+        hd.logger.info("HelpDesk shutting down.")
     finally:
         # clean up actions if any
         for thread in hd.threads:
             thread.join()
+        hd.logger.info("HelpDesk threads done.")
 
 

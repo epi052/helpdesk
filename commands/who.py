@@ -1,11 +1,14 @@
 """
 Command:  who [role|name|all] [argument]
+
     role:  [argument] returns all members with [argument] role active in their profile
     name:  returns all roles listed for [argument] in their profile
     all:   returns all users and their associated roles
 """
+import re
 import shlex
 import logging
+
 from collections import defaultdict
 
 from ABCs import ServiceProvider
@@ -28,6 +31,7 @@ class Who(ServiceProvider.ServiceProviderABC):
         self.build_data_maps()
 
     def build_data_maps(self):
+        """ fill out data structures for querying by role and by name """
         members = self.client.api_call('users.list').get('members')
         for member in members:
             if not member.get('deleted') and not member.get('is_bot'):
@@ -41,24 +45,46 @@ class Who(ServiceProvider.ServiceProviderABC):
                         self.title_map[subtitle.strip().lower()].append(name)
 
     def get_all(self):
+        """ return all member:role relationships """
         sb = ''
         for name, title in self.name_map.items():
             sb += '<@{}>: {}\n'.format(name, ' || '.join(title))
         self.send_message(sb, self.event.get('channel'))
 
     def get_by_name(self):
+        """ return member:role relationship by looking up a name """
         if self.debug:
             self.logger.debug(self.name_map)
         self.send_message(' || '.join(self.name_map.get(self.args[1].lower())), self.event.get('channel'))
 
     def get_by_role(self):
+        """ return member:role relationship by looking up a role """
         if self.debug:
-            self.logger.debug(self.name_map)
-        ret_val = ['<@{}>'.format(x) for x in self.title_map.get(' '.join(self.args[1:]).lower())]
-        self.send_message(' || '.join(ret_val), self.event.get('channel'))
+            self.logger.debug('looking for {} in {}'.format(self.args, self.name_map))
+
+        flight_match = re.compile(r'\b(alpha|bravo|charlie|delta)(.flight)?(.lead.*)?|(a|b|c|d)(?=.*flight)', re.IGNORECASE)
+
+        joined_args = ' '.join(self.args[1:]).lower()
+        initial_result = self.title_map.get(joined_args) if self.title_map.get(joined_args) else list()
+
+        if flight_match.search(joined_args):  # looking for flight info
+            for key, value in self.title_map.items():
+                if flight_match.search(key) and key.startswith(flight_match.search(joined_args).group(0)[0]):
+                    initial_result += value
+        else:
+            for key, value in self.title_map.items():
+                for arg in self.args:
+                    if not arg in key:
+                        continue
+                    initial_result += self.title_map.get(key)
+        if initial_result:
+            initial_result = ['<@{}>'.format(x) for x in initial_result]
+            self.send_message(' || '.join(set(initial_result)), self.event.get('channel'))
+        else:
+            self.send_message("No matches found.  If you think this is in error, try `who all`", self.event.get('channel'))
 
     def run(self):
-        if not self.args:
+        if not self.args:  # if they type `who` and nothing else, print help
             self.send_message(__doc__, self.event.get('channel'))
             return
 
@@ -66,75 +92,3 @@ class Who(ServiceProvider.ServiceProviderABC):
             if self.debug:
                 self.logger.debug('calling {}'.format(self.arg_map.get(arg, '!No Such Function!')))
             self.arg_map.get(arg, lambda: '')()
-
-if __name__ == '__main__':
-    pass
-
-"""
-import slackclient
-import difflib
-import pprint
-import time
-
-# TODO: add image, knuckle helpdesk guy
-
-data_map = defaultdict(list)
-
-def update_data(sc):
-    global data_map
-    data_map = defaultdict(list)
-    members = sc.api_call('users.list').get('members')
-    if not members:
-        return
-    data_map = defaultdict(list)
-    for member in members:
-        title = member['profile'].get('title', None)
-        if title:
-            for subtitle in title.split(','):
-                data_map["who is a {}".format(subtitle)].append(member)
-                data_map["who are the {}s".format(subtitle)].append(member)
-                data_map['whos a {}'.format(subtitle)].append(member)
-                data_map["who's a {}".format(subtitle)].append(member)
-
-if __name__ == '__main__':
-    token = "nope"
-    client = slackclient.SlackClient(token)
-
-    update_data(client)
-    #pprint.pprint(data_map)
-
-    if client.rtm_connect():
-        while True:
-            eventlist = client.rtm_read()
-            if not eventlist:
-                continue
-            for event in eventlist:
-                if event.get('type') == 'message':
-                    fuzzymatch = difflib.get_close_matches(event.get('text'), data_map.keys())
-                    if not fuzzymatch:
-                        continue
-                    resp = client.api_call('im.open', user=event.get('user'))
-                    if resp.get('ok'):
-                        nameset = set()
-                        channel = resp.get('channel').get('id')
-                        answer = "In answer to '{}' I have the following possibilities:".format(event.get('text'))
-                        for k,v in data_map.items():
-                            if k in fuzzymatch:
-                                for name in v:
-                                    nameset.add((name.get('name'), k.split()[-1]))
-                        for name, title in nameset:
-                            answer += "\n\t{} is a {}".format(name, title)
-                        #names = str(set([y.get('name') for x in map(data_map.get, fuzzymatch) for y in x]))
-                        #names = str(set([y.get('name') for x in map(data_map.get, fuzzymatch[0]) for y in x]))
-                        post_resp = client.api_call('chat.postMessage', channel=channel, text=answer)
-                elif event.get('type') == 'user_change':
-                    for title in map(str.strip, event.get('user').get('profile').get('title').split(',')):
-                        fuzzymatch = difflib.get_close_matches('who {}'.format(title), data_map.keys())
-                        if not fuzzymatch:
-                            continue
-                        update_data(client)
-                        #pprint.pprint(data_map)
-            time.sleep(1)
-    else:
-        print('Connection Failed, invalid token?')
-"""
