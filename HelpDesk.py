@@ -114,7 +114,7 @@ class HelpDesk:
                     if type != 'message' or event.get('hidden'):  # skip things that arent message, and skip edits
                         continue
 
-                    if self.is_direct_msg(event) or self.is_a_mention(event):
+                    if not event.get('user') == self.id and self.is_direct_msg(event) or self.is_a_mention(event):
                         text = event.get('text').lstrip('<@{}>: '.format(self.id))
                         args = shlex.split(text)
 
