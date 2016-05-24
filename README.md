@@ -1,7 +1,7 @@
 # HelpDesk
 ## Bot Framework for Slack
 ### Configuration
-- **_./config/botconfig.cfg_** should have the following structure 
+- **_./configs/helpdesk.cfg_** should have the following structure 
 
 ```
 [DEFAULT]
@@ -35,7 +35,7 @@ log_level = DEBUG
     | event  | dict  | the raw message event that triggered HelpDesk's initial response |
     
 - `ServiceProvider` commands are run in non-blocking threads
-- when sent a **SIGHUP**, will reload all `ServiceProvider`'s source code from **_./commands_**
+- when sent a **SIGHUP**, will reload all `ServiceProvider`'s source code from **_./commands_**, it will also reload **_./configs/helpdesk.cfg_**
 
 
 ### ServiceProviders 

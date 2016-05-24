@@ -54,6 +54,8 @@ class HelpDesk:
 
     def load_commands(self, *args):
         """ Import each command module from ./commands and store them in a list """
+        if args:  # called from SIGHUP
+            self.config.read(os.path.join('.', self.config.get("DIRECTORIES", 'configs'), 'helpdesk.cfg'))
         for cmd in os.listdir(self.config.get('DIRECTORIES', 'commands')):
             if cmd.startswith('__'):  # skip __init__.py
                 continue
@@ -91,7 +93,7 @@ class HelpDesk:
         """ List out each command in ./commands and print their associated __doc__. """
         sb = ''
         if not command:
-            sb += 'Hello <@{}>, I can provide help on the following commands (help [command])\n'.format(user)
+            sb += 'Hello <@{}>, I can provide help on the following commands (help [command]):\n'.format(user)
             for cmd, module in self.commands.items():
                 sb += '\t<@{}>: help {}\n'.format(self.id, cmd)
             return sb
@@ -145,7 +147,7 @@ class HelpDesk:
 if __name__ == '__main__':
     # read config
     config = ConfigParser()
-    config.read('./config/botconfig.cfg')
+    config.read('./configs/helpdesk.cfg')
 
     # set log level and log location
     logging.basicConfig(filename=config.get('LOGGING', 'log_name'), level='DEBUG',
