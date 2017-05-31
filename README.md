@@ -1,5 +1,5 @@
 # HelpDesk
-## Bot Framework for Slack
+## A SlackBot Framework
 ### Configuration
 - **_./configs/helpdesk.cfg_** should have the following structure 
 
