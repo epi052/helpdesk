@@ -5,7 +5,6 @@ Command:  who [role|name|all] [argument]
     name:  returns all roles listed for [argument] in their profile
     all:   returns all users and their associated roles
 """
-import re
 import shlex
 import logging
 
@@ -17,9 +16,9 @@ from ABCs import ServiceProvider
 class Who(ServiceProvider.ServiceProviderABC):
     def __init__(self, *args, **kwargs):
         super(Who, self).__init__(*args, **kwargs)
-        self.client = kwargs.get('client')
+        self.webclient = kwargs.get('webclient')
         self.debug = kwargs.get('debug', False)
-        self.event = kwargs.get('event')
+        self.event = kwargs.get('payload').get('data')
         self.logger = logging.getLogger(__name__)
         self.arg_map = {'all': self.get_all, 'name': self.get_by_name, 'role': self.get_by_role}
         self.args = shlex.split(' '.join(kwargs.get('args')[1:]))
@@ -32,7 +31,7 @@ class Who(ServiceProvider.ServiceProviderABC):
 
     def build_data_maps(self):
         """ fill out data structures for querying by role and by name """
-        members = self.client.api_call('users.list').get('members')
+        members = self.webclient.users_list().get('members')
         for member in members:
             if not member.get('deleted') and not member.get('is_bot'):
                 title = member.get('profile').get('title')
@@ -62,21 +61,14 @@ class Who(ServiceProvider.ServiceProviderABC):
         if self.debug:
             self.logger.debug('looking for {} in {}'.format(self.args, self.name_map))
 
-        flight_match = re.compile(r'\b(alpha|bravo|charlie|delta)(.flight)?(.lead.*)?|(a|b|c|d)(?=.*flight)', re.IGNORECASE)
-
         joined_args = ' '.join(self.args[1:]).lower()
         initial_result = self.title_map.get(joined_args) if self.title_map.get(joined_args) else list()
 
-        if flight_match.search(joined_args):  # looking for flight info
-            for key, value in self.title_map.items():
-                if flight_match.search(key) and key.startswith(flight_match.search(joined_args).group(0)[0]):
-                    initial_result += value
-        else:
-            for key, value in self.title_map.items():
-                for arg in self.args:
-                    if not arg in key:
-                        continue
-                    initial_result += self.title_map.get(key)
+        for key, value in self.title_map.items():
+            for arg in self.args:
+                if not arg in key:
+                    continue
+                initial_result += self.title_map.get(key)
         if initial_result:
             initial_result = ['<@{}>'.format(x) for x in initial_result]
             self.send_message(' || '.join(set(initial_result)), self.event.get('channel'))
@@ -85,6 +77,7 @@ class Who(ServiceProvider.ServiceProviderABC):
 
     def run(self):
         if not self.args:  # if they type `who` and nothing else, print help
+            self.logger.debug(f'who command run without args')
             self.send_message(__doc__, self.event.get('channel'))
             return
 
